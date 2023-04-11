@@ -25,7 +25,7 @@ import {IAdapter} from "./interfaces/IAdapter.sol";
 /// @title Styx Router
 /// @author 0xpeche
 /// @custom:experimental This is an experimental contract.
-contract StyxEntrypoint {
+contract StyxRouter {
     using SafeERC20 for IERC20;
     error InvalidMsgLength();
     error CallerNotKeeper();
@@ -51,13 +51,13 @@ contract StyxEntrypoint {
         address from
     );
 
-    string internal constant TRADE_WITNESS_TYPE =
-        "TradeWitness(uint8 slippageId,uint16 swapFeeBps,uint256 amountOut,address tokenOut)";
+    string internal constant TRADE_WITNESS_TYPE_WITH_FEE =
+        "TradeWitnessWithFee(uint8 slippageId,uint16 swapFeeBps,uint256 amountOut,address tokenOut)";
 
-    string internal constant WITNESS_TYPE_STRING =
-        "TradeWitness witness)TradeWitness(uint8 slippageId,uint16 swapFeeBps,uint256 amountOut,address tokenOut)TokenPermissions(address token,uint256 amount)";
+    string internal constant WITNESS_TYPE_STRING_WITH_FEE =
+        "TradeWitnessWithFee witness)TradeWitnessWithFee(uint8 slippageId,uint16 swapFeeBps,uint256 amountOut,address tokenOut)TokenPermissions(address token,uint256 amount)";
 
-    struct TradeWitness {
+    struct TradeWitnessWithFee {
         uint8 slippageId;
         uint16 swapFeeBps;
         uint256 amountOut;
@@ -91,11 +91,11 @@ contract StyxEntrypoint {
                     IERC20(token).transfer(receiver, amount);
                 }
             } else if (method == 1) {
-                (, address adapter, uint8 id) = abi.decode(
+                (, address _adapter, uint8 id) = abi.decode(
                     msg.data,
                     (uint, address, uint8)
                 );
-                adapters[id] = adapter;
+                adapters[id] = _adapter;
             } else {
                 (, address keeper, bool status) = abi.decode(
                     msg.data,
@@ -105,6 +105,9 @@ contract StyxEntrypoint {
             }
             return;
         }
+
+        // Permissioned for now
+        if (!isKeeper[msg.sender]) revert CallerNotKeeper();
 
         uint8 adapterId;
         uint amountOut;
@@ -122,7 +125,7 @@ contract StyxEntrypoint {
         /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
         if (msg.data.length == 77) {
-            // Case: Not ETH -- AmountIn specified -- SwapFee
+            // Case: AmountIn specified
             /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
             /*                            MAP                             */
             /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
@@ -180,11 +183,9 @@ contract StyxEntrypoint {
         /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
         // https://eips.ethereum.org/EIPS/eip-2098
-        bytes memory signature;
+        bytes memory signature = bytes.concat(r, vs);
 
-        signature = bytes.concat(r, vs);
-
-        TradeWitness memory witnessData = TradeWitness(
+        TradeWitnessWithFee memory witnessData = TradeWitnessWithFee(
             slippageId,
             swapFeeBps,
             amountOut,
@@ -210,7 +211,7 @@ contract StyxEntrypoint {
             }),
             guy,
             witness,
-            WITNESS_TYPE_STRING,
+            WITNESS_TYPE_STRING_WITH_FEE,
             signature
         );
 
@@ -250,6 +251,10 @@ contract StyxEntrypoint {
         uint minAmountOut = (amountOut * slippageBps) / MAX_BPS;
 
         emit Swap(amountIn, amountOut, minAmountOut, tokenIn, tokenOut, guy);
+
+        address adapter = adapters[adapterId];
+
+        IERC20(tokenIn).transfer(adapter, amountIn);
 
         uint actualAmountOut = IAdapter(adapters[adapterId]).swap(
             amountIn,
