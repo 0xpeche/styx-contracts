@@ -5,6 +5,7 @@ import {
     PERMIT2_ADDRESS,
     PermitTransferFrom,
     SignatureTransfer,
+    Witness
 } from "@uniswap/permit2-sdk";
 import { BigNumber, constants } from "ethers";
 
@@ -103,9 +104,15 @@ describe("Styx Permit2 Proxy", function () {
             deadline: SIG_DEADLINE
         };
 
+        const witness: Witness = {
+            witnessTypeName: "Witness",
+            witnessType: { Witness: [{ name: "swapCalldata", type: "bytes32" }] },
+            witness: { swapCalldata: ethers.utils.keccak256(quote.data) }
+        }
+
         const { chainId } = await ethers.provider.getNetwork();
 
-        const { domain, types, values } = SignatureTransfer.getPermitData(permit, PERMIT2_ADDRESS, chainId);
+        const { domain, types, values } = SignatureTransfer.getPermitData(permit, PERMIT2_ADDRESS, chainId, witness);
 
         const signature = await addr1._signTypedData(domain, types, values);
 
@@ -132,14 +139,14 @@ describe("Styx Permit2 Proxy", function () {
             value: quote.value
         }
 
-        const balTokenOutBefore = await tokenOut.balanceOf(addr1.address)
+        //const balTokenOutBefore = await tokenOut.balanceOf(addr1.address)
 
         const signedTx = await addr1.sendTransaction(rawTx)
 
-        const balTokenOutAfter = await tokenOut.balanceOf(addr1.address)
+        //const balTokenOutAfter = await tokenOut.balanceOf(addr1.address)
 
-        console.log(ethers.utils.formatEther(balTokenOutBefore.toString()), "balance tokenOut Before")
-        console.log(ethers.utils.formatEther(balTokenOutAfter.toString()), "balance tokenOut After")
+        //console.log(ethers.utils.formatEther(balTokenOutBefore.toString()), "balance tokenOut Before")
+        //console.log(ethers.utils.formatEther(balTokenOutAfter.toString()), "balance tokenOut After")
 
     })
 
@@ -177,9 +184,15 @@ describe("Styx Permit2 Proxy", function () {
             deadline: SIG_DEADLINE
         };
 
+        const witness: Witness = {
+            witnessTypeName: "Witness",
+            witnessType: { Witness: [{ name: "swapCalldata", type: "bytes32" }] },
+            witness: { swapCalldata: ethers.utils.keccak256(quote.data) }
+        }
+
         const { chainId } = await ethers.provider.getNetwork();
 
-        const { domain, types, values } = SignatureTransfer.getPermitData(permit, PERMIT2_ADDRESS, chainId);
+        const { domain, types, values } = SignatureTransfer.getPermitData(permit, PERMIT2_ADDRESS, chainId, witness);
 
         const signature = await addr1._signTypedData(domain, types, values);
 
@@ -206,14 +219,14 @@ describe("Styx Permit2 Proxy", function () {
             value: quote.value
         }
 
-        const balEthBefore = await ethers.provider.getBalance(addr1.address)
+        //const balEthBefore = await ethers.provider.getBalance(addr1.address)
 
         const signedTx = await addr1.sendTransaction(rawTx)
 
-        const balEthAfter = await ethers.provider.getBalance(addr1.address)
+        //const balEthAfter = await ethers.provider.getBalance(addr1.address)
 
-        console.log(ethers.utils.formatEther(balEthBefore.toString()), "balance Eth Before")
-        console.log(ethers.utils.formatEther(balEthAfter.toString()), "balance Eth After")
+        //console.log(ethers.utils.formatEther(balEthBefore.toString()), "balance Eth Before")
+        //console.log(ethers.utils.formatEther(balEthAfter.toString()), "balance Eth After")
 
     })
 

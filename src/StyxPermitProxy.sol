@@ -37,6 +37,16 @@ contract StyxPermitProxy {
 
     error SwapFailed();
 
+    struct Witness {
+        bytes32 swapCalldata;
+    }
+
+    string private constant WITNESS_TYPE_STRING =
+        "Witness witness)TokenPermissions(address token,uint256 amount)Witness(bytes32 swapCalldata)";
+
+    bytes32 private WITNESS_TYPEHASH =
+        keccak256("Witness(bytes32 swapCalldata)");
+
     constructor(address _permit2, address _registry, address ownerHelper) {
         permit2 = ISignatureTransfer(_permit2);
         addressRegistry = IArbAddressTable(_registry);
@@ -161,10 +171,14 @@ contract StyxPermitProxy {
                 amountIn
             );
 
-        permit2.permitTransferFrom(
+        permit2.permitWitnessTransferFrom(
             permit,
             transferDetails,
             msg.sender,
+            keccak256(
+                abi.encode(WITNESS_TYPEHASH, Witness(keccak256(swapCalldata)))
+            ),
+            WITNESS_TYPE_STRING,
             signature
         );
 
