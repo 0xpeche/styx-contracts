@@ -7,6 +7,7 @@ import {IArbAddressTable} from "./interfaces/IArbAddressTable.sol";
 import {IERC20} from "./interfaces/IERC20.sol";
 import {SafeERC20} from "./libs/SafeERC20.sol";
 import {IWETH} from "./interfaces/IWETH.sol";
+import "hardhat/console.sol";
 
 // &&&&&&&&&%%%&%#(((/,,,**,,,**,,,*******/*,,/%%%%%%#.,%%%%%%%%%%%%%%%% ./(#%%%%/. #%%/***,,*,*,,,,**,
 // %&&&&&&&&&%%%/((((*,,,,,,,**/.,,,*****/%%#.      ,**,,%%%%%%%%%%%%%%%%%%#.     #%%%%%#*,,,,,,*,,,,,*
@@ -26,30 +27,20 @@ import {IWETH} from "./interfaces/IWETH.sol";
 /// @custom:experimental This is an experimental contract.
 contract StyxPermitProxy {
     using SafeERC20 for IERC20;
-    mapping(address => uint) internal permitNonce;
+    mapping(address => uint) internal permitNonce; // storage slot #0
     ISignatureTransfer internal immutable permit2;
     IArbAddressTable internal immutable addressRegistry;
-    uint48 internal constant SIG_DEADLINE = type(uint48).max; // never expire, saves 32-48 bits of calldata
+    uint256 internal constant SIG_DEADLINE = type(uint256).max; // never expire, saves 32-48 bits of calldata
     mapping(uint8 => address) routers;
     address internal immutable owner;
+    address internal constant ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
     error SwapFailed();
 
-    string internal constant TRADE_WITNESS_TYPE =
-        "TradeWitness(uint8 routerId,bytes swapCalldata)";
-
-    string internal constant WITNESS_TYPE_STRING =
-        "TradeWitness witness)TradeWitness(uint8 routerId,bytes swapCalldata)TokenPermissions(address token,uint256 amount)";
-
-    struct TradeWitness {
-        uint8 routerId;
-        bytes swapCalldata;
-    }
-
-    constructor(address _permit2, address _registry) {
+    constructor(address _permit2, address _registry, address ownerHelper) {
         permit2 = ISignatureTransfer(_permit2);
         addressRegistry = IArbAddressTable(_registry);
-        owner = msg.sender;
+        owner = ownerHelper;
     }
 
     // https://gist.github.com/zemse/0ea19dd9b4922cd68f096fc2eb4abf93
@@ -57,6 +48,8 @@ contract StyxPermitProxy {
         uint8 bits = uint8(cint % (1 << 9));
         full = uint256(cint >> 8) << bits;
     }
+
+    receive() external payable {}
 
     fallback() external payable {
         if (msg.sender == owner) {
@@ -91,48 +84,47 @@ contract StyxPermitProxy {
         /*                    CALLDATA DECODING                       */
         /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
-        // todo: case amountIn = balanceOf(msg.sender)
-
-        uint swapCalldataLength = msg.data.length - (15 + 32 + 32); // Subtract the length of the packed data + r + vs
+        uint swapCalldataLength = msg.data.length - 96; // Subtract the length of the packed data + r + vs
         bytes memory swapCalldata = new bytes(swapCalldataLength);
 
         /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*:*/
         /*                          MAP                           */
         /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.•*/
+
         // | Field         | Bytes | Start Position | End Position |
         // |---------------|-------|----------------|--------------|
         // | routerId      |   1   |       0        |       0      | ----
         // | amountInCint  |   8   |       1        |       8      |     | Packed in a uint120
         // | tokenInIndex  |   3   |       9        |      11      |     |
         // | tokenOutIndex |   3   |      12        |      14      | ----
-        // | r             |   32  |      15        |      46      |
-        // | vs            |   32  |      47        |      78      |
+        // | r             |   32  |      32        |      63      |
+        // | vs            |   32  |      64        |      95      |
         // |---------------|-------|----------------|--------------|
-        // | swapCalldata  |  var  |      79        |   N-1        |
+        // | swapCalldata  |  var  |      96        |   N-1        |
 
         assembly {
-            let packedData := calldataload(0) // Dynamic array length trimmed off, we decode manually
+            let packedData := calldataload(0)
             routerId := and(shr(112, packedData), 0xFF)
             amountInCint := and(shr(48, packedData), 0xFFFFFFFFFFFFFFFF)
             tokenInIndex := and(shr(24, packedData), 0xFFFFFF)
             tokenOutIndex := and(packedData, 0xFFFFFF)
 
-            r := calldataload(15)
-            vs := calldataload(47)
-        }
+            r := calldataload(32)
+            vs := calldataload(64)
 
-        for (uint i = 0; i < swapCalldataLength; i++) {
-            swapCalldata[i] = msg.data[i + 15];
+            let src := 96 // Start position of swapCalldata in msg.data
+            let dst := add(swapCalldata, 32)
+            calldatacopy(dst, src, swapCalldataLength)
         }
 
         address router = routers[routerId];
 
-        IERC20 tokenIn = IERC20(addressRegistry.lookupIndex(tokenOutIndex));
+        IERC20 tokenIn = IERC20(addressRegistry.lookupIndex(tokenInIndex));
         IERC20 tokenOut = IERC20(addressRegistry.lookupIndex(tokenOutIndex));
         uint amountIn = uncompress(amountInCint);
 
-        // If this is the first time this token and router have been used, we'll approve it permanently.
-        // This contract should never hold any balance of token.
+        // // If this is the first time this token and router have been used, we'll approve it permanently.
+        // // This contract should never hold any balance of token.
         if (tokenIn.allowance(address(this), router) < amountIn) {
             // Use inlined _callOptionalReturn to do the approve, rather than `safeApprove`,
             // because we've already done sufficient checks on the balance
@@ -146,55 +138,96 @@ contract StyxPermitProxy {
             );
         }
 
-        /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
-        /*                    SIGNATURE TRANSFER                      */
-        /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
+        // /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
+        // /*                    SIGNATURE TRANSFER                      */
+        // /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
-        // https://eips.ethereum.org/EIPS/eip-2098
+        // // https://eips.ethereum.org/EIPS/eip-2098
         bytes memory signature = bytes.concat(r, vs);
 
-        TradeWitness memory witnessData = TradeWitness(routerId, swapCalldata);
+        // permitTransferFrom uses unordered nonce, we use a fixed offset to avoid potential collision
+        uint nonce = permitNonce[msg.sender] + 1337 + 420 + 69 + 15537393;
 
-        bytes32 witness = keccak256(abi.encode(witnessData));
+        ISignatureTransfer.SignatureTransferDetails
+            memory transferDetails = getTransferDetails(
+                address(this),
+                amountIn
+            );
 
-        uint nonce = permitNonce[msg.sender] + 1337 + 420 + 69 + 15537393; // *random* offset
+        ISignatureTransfer.PermitTransferFrom
+            memory permit = defaultERC20PermitTransfer(
+                address(tokenIn),
+                nonce,
+                amountIn
+            );
 
-        permit2.permitWitnessTransferFrom(
-            ISignatureTransfer.PermitTransferFrom({
-                permitted: ISignatureTransfer.TokenPermissions({
-                    token: address(tokenIn),
-                    amount: amountIn
-                }),
-                nonce: nonce,
-                deadline: uint(SIG_DEADLINE)
-            }),
-            ISignatureTransfer.SignatureTransferDetails({
-                to: address(this),
-                requestedAmount: amountIn
-            }),
+        permit2.permitTransferFrom(
+            permit,
+            transferDetails,
             msg.sender,
-            witness,
-            WITNESS_TYPE_STRING,
             signature
         );
 
         // increment the nonce
         ++permitNonce[msg.sender];
 
-        /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
-        /*                           SWAP                             */
-        /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
+        // /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
+        // /*                           SWAP                             */
+        // /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
-        uint256 tokenOutStartBal = tokenOut.balanceOf(address(this));
+        // If tokenIn is ETH, then this contract is useless so we don't care about that case.
 
-        (bool success, ) = router.call{value: msg.value}(swapCalldata);
+        if (address(tokenOut) != ETH) {
+            uint256 tokenOutStartBal = tokenOut.balanceOf(address(this));
 
-        if (!success) revert SwapFailed();
+            (bool success, ) = router.call{value: msg.value}(swapCalldata);
 
-        tokenOut.transfer(
-            msg.sender,
-            tokenOut.balanceOf(address(this)) - tokenOutStartBal
-        );
+            if (!success) revert SwapFailed();
+
+            tokenOut.transfer(
+                msg.sender,
+                tokenOut.balanceOf(address(this)) - tokenOutStartBal
+            );
+        } else {
+            uint256 outStartBal = address(this).balance;
+
+            (bool success, ) = router.call{value: msg.value}(swapCalldata);
+
+            if (!success) revert SwapFailed();
+
+            payable(msg.sender).transfer(address(this).balance - outStartBal);
+        }
+    }
+
+    function defaultERC20PermitTransfer(
+        address token0,
+        uint256 nonce,
+        uint256 amount
+    ) internal pure returns (ISignatureTransfer.PermitTransferFrom memory) {
+        return
+            ISignatureTransfer.PermitTransferFrom({
+                permitted: ISignatureTransfer.TokenPermissions({
+                    token: token0,
+                    amount: amount
+                }),
+                nonce: nonce,
+                deadline: SIG_DEADLINE
+            });
+    }
+
+    function getTransferDetails(
+        address to,
+        uint256 amount
+    )
+        internal
+        pure
+        returns (ISignatureTransfer.SignatureTransferDetails memory)
+    {
+        return
+            ISignatureTransfer.SignatureTransferDetails({
+                to: to,
+                requestedAmount: amount
+            });
     }
 
     /**

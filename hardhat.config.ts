@@ -1,5 +1,6 @@
 import fs from "fs";
 import "@nomiclabs/hardhat-waffle";
+import "@nomiclabs/hardhat-ethers";
 import "@typechain/hardhat";
 import "hardhat-preprocessor";
 import { HardhatUserConfig, task } from "hardhat/config";
@@ -13,6 +14,16 @@ function getRemappings() {
 }
 
 const config: HardhatUserConfig = {
+  defaultNetwork: "hardhat",
+  networks: {
+    hardhat: {
+      blockGasLimit: 150000000,
+      forking: {
+        url: "https://eth-mainnet.g.alchemy.com/v2/a8KJMzHqC8pD4sqpTisz4P7T-ntr2Jds",
+      },
+      chainId: 1
+    }
+  },
   solidity: {
     version: "0.8.19",
     settings: {

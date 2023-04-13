@@ -149,7 +149,7 @@ contract StyxRouter {
             uint24 tokenOutIndex;
 
             assembly {
-                let packedData := calldataload(0) // Dynamic array length trimmed off, we decode manually
+                let packedData := calldataload(0)
                 adapterId := and(shr(192, packedData), 0xFF)
                 slippageId := and(shr(189, packedData), 0x07)
                 swapFeeBps := and(shr(176, packedData), 0x1FFF)
