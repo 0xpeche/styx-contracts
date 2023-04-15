@@ -43,7 +43,14 @@ contract StyxRouter {
     error CallerNotKeeper();
     error InvalidFee();
     error InsufficentAmountOut();
-    error InvalidSigner();
+
+    event Swap(
+        uint amountIn,
+        uint amountOut,
+        address tokenIn,
+        address tokenOut,
+        address guy
+    );
 
     struct Witness {
         address guy;
@@ -148,12 +155,7 @@ contract StyxRouter {
             amountIn = msg.value;
             IWETH weth = IWETH(WETH9);
             weth.deposit{value: amountIn}();
-            assembly {
-                guy := and(
-                    calldataload(18),
-                    0xffffffffffffffffffffffffffffffffffffffff
-                )
-            }
+            guy = msg.sender;
         } else {
             bytes32 r;
             bytes32 vs;
@@ -169,7 +171,8 @@ contract StyxRouter {
                     vs := calldataload(90)
                 }
                 amountIn = uncompress(amountInCint);
-            } else {
+            } else if (msg.data.length == 114) {
+                console.log(msg.data.length);
                 assembly {
                     guy := and(
                         calldataload(18),
@@ -180,6 +183,8 @@ contract StyxRouter {
                     vs := calldataload(82)
                 }
                 amountIn = tokenIn.balanceOf(guy);
+            } else {
+                revert InvalidMsgLength();
             }
 
             /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
@@ -265,13 +270,24 @@ contract StyxRouter {
 
         address adapter = adapters[adapterId];
 
-        uint feeAmount = (amountIn * swapFeeBps) / MAX_BPS;
+        if (isKeeper[msg.sender]) {
+            if (swapFeeBps == 0) revert InvalidFee();
+            uint feeAmount = (amountIn * swapFeeBps) / MAX_BPS;
 
-        IERC20(tokenIn).transfer(msg.sender, feeAmount);
+            IERC20(tokenIn).transfer(msg.sender, feeAmount);
 
-        amountIn = amountIn - feeAmount;
+            amountIn = amountIn - feeAmount;
+        }
 
         IERC20(tokenIn).transfer(adapter, amountIn);
+
+        emit Swap(
+            amountIn,
+            amountOut,
+            address(tokenIn),
+            address(tokenOut),
+            guy
+        );
 
         // uint actualAmountOut = IAdapter(adapters[adapterId]).swap(
         //     amountIn,

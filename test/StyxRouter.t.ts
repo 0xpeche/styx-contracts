@@ -132,40 +132,21 @@ describe("Styx Router", function () {
 
         hre.tracer.enable = false;
 
-        //await new Promise((resolve) => {
-        //styxRouter.on("DecodedSwap", (dAmountIn, dAmountOut, minAmountOut, dtokenIn, dtokenOut, guy, dR, dVs, dFeeAmount, dAdapter, dInIndex, dOutIndex, dSwapFeeBps, packedData, nonce, sig) => {
-        // Validate the decoded values
-        // expect(dAmountIn.to.be.equal(testAmountIn.sub(dFeeAmount)))
-        // expect(dAmountOut.to.be.equal(amountOutMock))
-        // expect(dtokenIn.to.be.equal(tokenIn.address))
-        // expect(dtokenOut.to.be.equal(tokenOut.address))
-        // expect(guy.to.be.equal(addr1.address))
-        // expect(dR.to.be.equal(rCompact))
-        // expect(dVs.to.be.equal(vsCompact))
-        // expect(dFeeAmount.to.be.equal(testAmountIn.mul(0.1)))
-        // expect(dAdapter.to.be.equal("0x000000000000000000000000000000000000dEaD"))
-        // console.log("-".repeat(48))
-        // console.log(dAmountIn, "dAmountIn")
-        // console.log(testAmountIn, "testAmountIn")
-        // console.log("-".repeat(48))
-        // console.log(dtokenIn, "dtokenIn")
-        // console.log("-".repeat(48))
-        // console.log(guy, "guy")
-        // console.log(addr1.address, "addr1.address")
-        // console.log("-".repeat(48))
-        // console.log(dR, "dR")
-        // console.log(rCompact, "rCompact")
-        // console.log("-".repeat(48))
-        // console.log(dVs, "dVs")
-        // console.log(vsCompact, "vsCompact")
-        // console.log("-".repeat(48))
-        // console.log(nonce, "nonce")
-        // console.log(parseInt(currNonce) + 1337 + 420 + 69, "currNonce")
-        // console.log(sig, "sig")
-        // console.log(signature, "signature")
-        //resolve(true);
-        //});
-        //})
+        await new Promise((resolve) => {
+            styxRouter.on("Swap", (amountIn, amountOut, tokenIn, tokenOut, guy) => {
+                console.log("-".repeat(48))
+                console.log("Should properly decode the calldata not ETH / amountIn")
+                console.log("-".repeat(48))
+                console.log(amountIn)
+                console.log(amountOut)
+                console.log(tokenIn)
+                console.log(tokenOut)
+                console.log(guy)
+                console.log("-".repeat(48))
+                console.log(" ".repeat(48))
+                resolve(true);
+            });
+        })
 
     })
 
@@ -222,6 +203,22 @@ describe("Styx Router", function () {
 
         hre.tracer.enable = false;
 
+        await new Promise((resolve) => {
+            styxRouter.on("Swap", (amountIn, amountOut, tokenIn, tokenOut, guy) => {
+                console.log("-".repeat(48))
+                console.log("Should properly decode the calldata not ETH / amountIn is balanceOf")
+                console.log("-".repeat(48))
+                console.log(amountIn)
+                console.log(amountOut)
+                console.log(tokenIn)
+                console.log(tokenOut)
+                console.log(guy)
+                console.log("-".repeat(48))
+                console.log(" ".repeat(48))
+                resolve(true);
+            });
+        })
+
     })
 
     it("Should properly decode the calldata ETH", async function () {
@@ -234,12 +231,12 @@ describe("Styx Router", function () {
         const tokenInIndex = await arbAddressTable.lookup(WETH)
         const tokenOutIndex = await arbAddressTable.lookup(tokenOut.address)
 
-        const data = await utilsRouter.encodeData3(0, 0, SWAP_FEE_BPS, amountOutMock, tokenInIndex, tokenOutIndex, addr1.address)
+        const data = await utilsRouter.encodeData3(0, 0, SWAP_FEE_BPS, amountOutMock, tokenInIndex, tokenOutIndex)
 
         const rawTx = {
             to: styxRouter.address,
             data: data,
-            value: ethers.utils.parseEther("1"),
+            value: ethers.utils.parseEther("1.1337"),
             gasLimit: 1500000
         }
 
@@ -248,6 +245,22 @@ describe("Styx Router", function () {
         const signedTx = await addr1.sendTransaction(rawTx);
 
         hre.tracer.enable = false;
+
+        await new Promise((resolve) => {
+            styxRouter.on("Swap", (amountIn, amountOut, tokenIn, tokenOut, guy) => {
+                console.log("-".repeat(48))
+                console.log("Should properly decode the calldata ETH")
+                console.log("-".repeat(48))
+                console.log(amountIn)
+                console.log(amountOut)
+                console.log(tokenIn)
+                console.log(tokenOut)
+                console.log(guy)
+                console.log("-".repeat(48))
+                console.log(" ".repeat(48))
+                resolve(true);
+            });
+        })
 
     })
 

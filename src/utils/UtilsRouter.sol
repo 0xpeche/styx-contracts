@@ -138,10 +138,9 @@ contract UtilsRouter {
         uint16 swapFeeBps,
         uint256 amountOut,
         uint tokenInIndex,
-        uint tokenOutIndex,
-        uint160 guy
+        uint tokenOutIndex
     ) external pure returns (bytes memory) {
-        bytes memory encoded = new bytes(114);
+        bytes memory encoded = new bytes(94);
 
         uint64 amountOutCint = compress(amountOut);
 
@@ -155,8 +154,6 @@ contract UtilsRouter {
             packedData := or(packedData, shl(120, tokenInIndex))
 
             mstore(add(encoded, 32), packedData)
-
-            mstore(add(encoded, 50), guy)
         }
         return encoded;
     }
