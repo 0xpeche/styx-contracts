@@ -53,11 +53,7 @@ describe("Styx Router", function () {
         const utilsRouter = await UtilsRouter.deploy();
         await utilsRouter.deployed();
 
-        const UniswapV2Adapter = await ethers.getContractFactory("UniswapV2Adapter");
-        const uniswapV2Adapter = await UniswapV2Adapter.deploy("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f", 3, WETH)
-        await uniswapV2Adapter.deployed();
-
-        await ownerHelper.setAdapter(styxRouter.address, uniswapV2Adapter.address, "0")
+        await ownerHelper.setAdapter(styxRouter.address, "0x000000000000000000000000000000000000dEaD", "0")
         await ownerHelper.setKeeper(styxRouter.address, addr2.address, true)
 
         // Get some tokens to swap
@@ -76,27 +72,15 @@ describe("Styx Router", function () {
         // Give unlimited approval to Permit2
         await tokenIn.connect(addr1).approve(PERMIT2_ADDRESS, constants.MaxInt256)
 
-        return { tokenIn, tokenOut, addr1, styxRouter, utilsRouter, arbAddressTable, addr2, uniswapV2Adapter }
+        return { tokenIn, tokenOut, addr1, styxRouter, utilsRouter, arbAddressTable, addr2 }
     }
 
-    it("Should swap 100 DAI to LINK with 10 DAI paid as fee via UniswapV2", async function () {
-        const { tokenIn, tokenOut, arbAddressTable, utilsRouter, styxRouter, addr1, addr2, uniswapV2Adapter } = await loadFixture(fixtures);
+    it("Should properly decode the calldata not ETH / amountIn specified", async function () {
+        const { tokenIn, tokenOut, arbAddressTable, utilsRouter, styxRouter, addr1, addr2 } = await loadFixture(fixtures);
 
         const amountInCint = await utilsRouter.compress(testAmountIn);
         // We have to use the uncompressed number for our quote and for the permit
         const amountInUncompressed = await utilsRouter.uncompress(amountInCint);
-
-        const slipId = "5"
-
-        const adapterId = "0"
-
-        const feeAmount = (amountInUncompressed.mul(SWAP_FEE_BPS).div("10000"))
-
-        const quoteAmountOut = await uniswapV2Adapter.getQuote(amountInUncompressed.sub(feeAmount), tokenIn.address, tokenOut.address)
-
-        const amountOutCint = await utilsRouter.compress(quoteAmountOut);
-        // We have to use the uncompressed number for our quote and for the permit
-        const amountOutUncompressed = await utilsRouter.uncompress(amountOutCint);
 
         // Register token Index from Arb Address Table
         await arbAddressTable.register(tokenIn.address);
@@ -120,7 +104,7 @@ describe("Styx Router", function () {
         const witness: Witness = {
             witnessTypeName: "Witness",
             witnessType: { Witness: [{ name: "guy", type: "address" }, { name: "tokenOut", type: "address" }, { name: "amountOut", type: "uint256" }, { name: "swapFeeBps", type: "uint16" }, { name: "slippageId", type: "uint8" }, { name: "adapterId", type: "uint8" }] },
-            witness: { guy: addr1.address, tokenOut: tokenOut.address, amountOut: amountOutUncompressed, swapFeeBps: SWAP_FEE_BPS, slippageId: slipId, adapterId: adapterId }
+            witness: { guy: addr1.address, tokenOut: tokenOut.address, amountOut: amountOutMock, swapFeeBps: SWAP_FEE_BPS, slippageId: "0", adapterId: "0" }
         }
 
         const { chainId } = await ethers.provider.getNetwork();
@@ -133,7 +117,7 @@ describe("Styx Router", function () {
 
         const [rCompact, vsCompact] = await utilsRouter.getCompactSignature(v, r, s);
 
-        const data = await utilsRouter.encodeData(slipId, adapterId, SWAP_FEE_BPS, amountOutUncompressed, testAmountIn, tokenInIndex, tokenOutIndex, addr1.address, rCompact, vsCompact)
+        const data = await utilsRouter.encodeData(0, 0, SWAP_FEE_BPS, amountOutMock, testAmountIn, tokenInIndex, tokenOutIndex, addr1.address, rCompact, vsCompact)
 
         const rawTx = {
             to: styxRouter.address,
@@ -149,13 +133,12 @@ describe("Styx Router", function () {
         hre.tracer.enable = false;
 
         await new Promise((resolve) => {
-            styxRouter.on("Swap", (amountIn, amountOut, actualAmountOut, tokenIn, tokenOut, guy) => {
+            styxRouter.on("Swap", (amountIn, amountOut, tokenIn, tokenOut, guy) => {
                 console.log("-".repeat(48))
-                console.log("Should swap 100 DAI to LINK with 10 DAI paid as fee via UniswapV2")
+                console.log("Should properly decode the calldata not ETH / amountIn")
                 console.log("-".repeat(48))
-                console.log(ethers.utils.formatEther(amountIn))
-                console.log(ethers.utils.formatEther(amountOut))
-                console.log(ethers.utils.formatEther(actualAmountOut))
+                console.log(amountIn)
+                console.log(amountOut)
                 console.log(tokenIn)
                 console.log(tokenOut)
                 console.log(guy)
@@ -166,8 +149,6 @@ describe("Styx Router", function () {
         })
 
     })
-
-    return;
 
     it("Should properly decode the calldata not ETH / amountIn is balanceOf", async function () {
         const { tokenIn, tokenOut, arbAddressTable, utilsRouter, styxRouter, addr1, addr2 } = await loadFixture(fixtures);

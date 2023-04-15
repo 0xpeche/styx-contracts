@@ -30,14 +30,14 @@ contract StyxRouter {
     using SafeERC20 for IERC20;
 
     mapping(address => uint) internal permitNonce; // storage slot 0x0
+    mapping(uint8 => address) adapters; // 0x01?
+    mapping(address => bool) internal isKeeper; // 0x02?
     ISignatureTransfer internal immutable permit2;
     IArbAddressTable internal immutable addressRegistry;
     uint256 internal constant SIG_DEADLINE = type(uint256).max; // never expire, saves 32-48 bits of calldata
-    mapping(address => bool) internal isKeeper;
     address internal immutable owner;
     uint16 internal constant MAX_BPS = 10000;
     address internal immutable WETH9;
-    mapping(uint8 => address) adapters;
 
     error InvalidMsgLength();
     error CallerNotKeeper();
@@ -47,6 +47,7 @@ contract StyxRouter {
     event Swap(
         uint amountIn,
         uint amountOut,
+        uint actualAmountOut,
         address tokenIn,
         address tokenOut,
         address guy
@@ -144,6 +145,8 @@ contract StyxRouter {
             tokenOutIndex := and(shr(144, packedData), 0xFFFFFF)
             tokenInIndex := and(shr(120, packedData), 0xFFFFFF)
         }
+
+        address adapter = adapters[adapterId];
 
         amountOut = uncompress(amountOutCint);
 
@@ -268,8 +271,6 @@ contract StyxRouter {
 
         uint minAmountOut = (amountOut * slippageBps) / MAX_BPS;
 
-        address adapter = adapters[adapterId];
-
         if (isKeeper[msg.sender]) {
             if (swapFeeBps == 0) revert InvalidFee();
             uint feeAmount = (amountIn * swapFeeBps) / MAX_BPS;
@@ -281,23 +282,24 @@ contract StyxRouter {
 
         IERC20(tokenIn).transfer(adapter, amountIn);
 
+        uint actualAmountOut = IAdapter(adapters[adapterId]).swap(
+            address(tokenIn),
+            address(tokenOut),
+            amountIn,
+            amountOut,
+            guy
+        );
+
         emit Swap(
             amountIn,
             amountOut,
+            actualAmountOut,
             address(tokenIn),
             address(tokenOut),
             guy
         );
 
-        // uint actualAmountOut = IAdapter(adapters[adapterId]).swap(
-        //     amountIn,
-        //     amountOut,
-        //     address(tokenIn),
-        //     address(tokenOut),
-        //     guy
-        // );
-
-        // if (actualAmountOut < minAmountOut) revert InsufficentAmountOut();
+        if (actualAmountOut < minAmountOut) revert InsufficentAmountOut();
     }
 
     function defaultERC20PermitTransfer(
