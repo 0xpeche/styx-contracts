@@ -175,7 +175,6 @@ contract StyxRouter {
                 }
                 amountIn = uncompress(amountInCint);
             } else if (msg.data.length == 114) {
-                console.log(msg.data.length);
                 assembly {
                     guy := and(
                         calldataload(18),
