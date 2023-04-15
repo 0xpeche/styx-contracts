@@ -2,8 +2,6 @@
 
 pragma solidity 0.8.19;
 
-import {IAdapter} from "./interfaces/IAdapter.sol";
-
 contract StyxUtilsPermit {
     // https://gist.github.com/zemse/0ea19dd9b4922cd68f096fc2eb4abf93
     function uncompress(uint64 cint) public pure returns (uint256 full) {

@@ -4,6 +4,7 @@ import "@nomiclabs/hardhat-ethers";
 import "@typechain/hardhat";
 import "hardhat-preprocessor";
 import { HardhatUserConfig, task } from "hardhat/config";
+import "hardhat-tracer";
 
 function getRemappings() {
   return fs
@@ -25,14 +26,27 @@ const config: HardhatUserConfig = {
     }
   },
   solidity: {
-    version: "0.8.19",
-    settings: {
-      viaIR: true,
-      optimizer: {
-        enabled: true,
-        runs: 200,
+    compilers: [
+      {
+        version: "0.8.19",
+        settings: {
+          viaIR: true,
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+        },
       },
-    },
+      {
+        version: "0.8.17",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+        },
+      }
+    ]
   },
   paths: {
     sources: "./src", // Use ./src rather than ./contracts as Hardhat expects

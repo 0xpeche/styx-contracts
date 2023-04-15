@@ -27,7 +27,7 @@ import "hardhat/console.sol";
 /// @custom:experimental This is an experimental contract.
 contract StyxPermitProxy {
     using SafeERC20 for IERC20;
-    mapping(address => uint) internal permitNonce; // storage slot #0
+    mapping(address => uint) internal permitNonce; // storage slot 0x0
     ISignatureTransfer internal immutable permit2;
     IArbAddressTable internal immutable addressRegistry;
     uint256 internal constant SIG_DEADLINE = type(uint256).max; // never expire, saves 32-48 bits of calldata
@@ -104,7 +104,7 @@ contract StyxPermitProxy {
         // | Field         | Bytes | Start Position | End Position |
         // |---------------|-------|----------------|--------------|
         // | routerId      |   1   |       0        |       0      | ----
-        // | amountInCint  |   8   |       1        |       8      |     | Packed in a uint120
+        // | amountInCint  |   8   |       1        |       8      |     | Packed
         // | tokenInIndex  |   3   |       9        |      11      |     |
         // | tokenOutIndex |   3   |      12        |      14      | ----
         // | r             |   32  |      32        |      63      |
